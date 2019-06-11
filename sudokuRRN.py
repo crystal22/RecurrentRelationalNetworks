@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 
 from message_passing import message_passing
@@ -34,14 +36,14 @@ class RRN(torch.nn.Module):
         self.lstm_size = lstm_size
         self.message_size = message_size
 
-        self.edges = sudoku_edges
-        seld.n_nodes = 81 # batch? 0 axis?
+        self.edges = sudoku_edges()
+        self.n_nodes = 81 # batch? 0 axis?
 
         self.edge_indices = torch.tensor(
             [(i + (b * 81), j + (b * 81))
                 for b in range(self.batch_size)
                     for i, j in self.edges],
-            torch.int32)
+            dtype = torch.int32)
 
         self.n_edges = self.edge_indices.shape[0]
 
@@ -51,7 +53,7 @@ class RRN(torch.nn.Module):
         # (batch_size, 9 * 9, 2) # Why 2?
         self.positions = torch.tensor(
             [[(i, j) for i in range(9) for j in range(9)]
-                for b in range(self.batch_size)], torch.int32)
+                for b in range(self.batch_size)], dtype = torch.int32)
 
         # (batch_size, 9 * 9, embed_size)
         self.rows = torch.nn.Embedding(9, self.embed_size)
@@ -173,3 +175,6 @@ def train(net, x, y, learning_rate = 0.01, epochs = 100):
         losses.append(loss)
 
     return losses
+
+if __name__ == '__main__':
+    net = RRN()
