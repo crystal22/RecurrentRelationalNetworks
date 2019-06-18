@@ -26,7 +26,7 @@ def sudoku_edges():
 class RRN(torch.nn.Module):
     """Recurrent relational-network"""
 
-    def __init__(self, linear_size = 32, lstm_size = 32, embed_size = 32, message_size = 32, batch_size = 1024):
+    def __init__(self, n_steps = 10, linear_size = 32, lstm_size = 32, embed_size = 32, message_size = 32, batch_size = 1024):
 
         super(RRN, self).__init__()
 
@@ -39,11 +39,13 @@ class RRN(torch.nn.Module):
         self.edges = sudoku_edges()
         self.n_nodes = 81 # batch? 0 axis?
 
+        self.n_steps = n_steps
+
         self.edge_indices = torch.tensor(
             [(i + (b * 81), j + (b * 81))
                 for b in range(self.batch_size)
                     for i, j in self.edges],
-            dtype = torch.int32)
+            dtype = torch.long)
 
         self.n_edges = self.edge_indices.shape[0]
 
@@ -53,7 +55,7 @@ class RRN(torch.nn.Module):
         # (batch_size, 9 * 9, 2) # Why 2?
         self.positions = torch.tensor(
             [[(i, j) for i in range(9) for j in range(9)]
-                for b in range(self.batch_size)], dtype = torch.int32)
+                for b in range(self.batch_size)], dtype = torch.long)
 
         # (batch_size, 9 * 9, embed_size)
         self.rows = torch.nn.Embedding(9, self.embed_size)
@@ -98,8 +100,8 @@ class RRN(torch.nn.Module):
     def forward(self, x):
 
         x = self.initial_state(x)
-        r = self.rows(positions[:, :, 0])
-        c = self.cols(positions[:, :, 1])
+        r = self.rows(self.positions[:, :, 0])
+        c = self.cols(self.positions[:, :, 1])
 
         x = torch.cat([x, r, c], dim = -1)
 
@@ -117,8 +119,9 @@ class RRN(torch.nn.Module):
         c_state = torch.zeros((x.shape[0], self.lstm_size))
 
         for step in range(self.n_steps):
+
             # Pass member function (okay?)
-            x = message_passing(x, self.edge_indices, self.edge_features, self.message_function)
+            x = message_passing(x, self.edge_indices, self.message_function, self.edge_features)
 
             x = torch.cat([x, x0], dim = -1)
 
@@ -139,6 +142,8 @@ class RRN(torch.nn.Module):
         # Input to torch.nn.CrossEntropyLoss, roughly equivalent to TF softmax_cross_entropy_with_logits
         x = self.output_layer(x).reshape((-1, 81, 9))
 
+        print(x.shape)
+
         return x
 
     def eval(self, x):
@@ -152,29 +157,44 @@ def train(net, x, y, learning_rate = 0.01, epochs = 100):
     losses = []
 
     for epoch in range(epochs):
-        optimizer.zero_grad()
 
-        train_outputs = net(x)
+        for batch in range(x.shape[0]):
 
-        # Calculate gradients and loss from final outputs, rather than over LSTM steps
+            xBatch = x[batch,...]
+            yBatch = y[batch,...]
 
-        # Outputs with reduction = 'none' are same shape as the input, (N, n_outputs)
-        loss = loss_function(train_outputs, y)
+            optimizer.zero_grad()
 
-        # We want to sum over outputs (per paper)...
-        loss = torch.sum(loss, dim = -1)
+            train_outputs = net(xBatch)
 
-        # ...and average over samples (per usual)
-        loss = torch.mean(loss, dim = 0)
+            # Calculate gradients and loss from final outputs, rather than over LSTM steps
 
-        # Loss is now a scalar
-        loss.backward()
+            # Outputs with reduction = 'none' are same shape as the input, (N, n_outputs)
+            loss = loss_function(train_outputs, yBatch)
 
-        optimizer.step()
+            # We want to sum over outputs (per paper)...
+            loss = torch.sum(loss, dim = -1)
 
-        losses.append(loss)
+            # ...and average over samples (per usual)
+            loss = torch.mean(loss, dim = 0)
+
+            # Loss is now a scalar
+            loss.backward()
+
+            optimizer.step()
+
+            losses.append(loss)
 
     return losses
 
 if __name__ == '__main__':
-    net = RRN()
+
+    from trainRRN import preprocessData
+
+    batch_size = 128
+
+    net = RRN(batch_size = batch_size)
+
+    qTrain, qTest, rTrain, rTest = preprocessData(batch_size = batch_size)
+    print(rTrain.shape)
+    train(net, qTrain, rTrain)
