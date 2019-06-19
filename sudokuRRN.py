@@ -2,6 +2,8 @@ import numpy as np
 
 import torch
 
+from tqdm import tqdm
+
 from message_passing import message_passing
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -52,7 +54,7 @@ class RRN(torch.nn.Module):
         self.edge_features = None
         self.n_edge_features = 0
 
-        # (batch_size, 9 * 9, 2) # Why 2?
+        # (batch_size, 9 * 9, 2) # Why 2? -> rows + cols
         self.positions = torch.tensor(
             [[(i, j) for i in range(9) for j in range(9)]
                 for b in range(self.batch_size)], dtype = torch.long)
@@ -87,7 +89,9 @@ class RRN(torch.nn.Module):
         self.node_lstm = torch.nn.LSTMCell(self.linear_size, self.lstm_size)
 
         # 9 outputs in paper, 10 in reference implementation?
-        self.output_layer = torch.nn.Linear(self.lstm_size, 9)
+        # 10 outputs for range [0, 9], but 0 is never used
+        # However this needs to be in this range for PyTorch to determine the number of categories
+        self.output_layer = torch.nn.Linear(self.lstm_size, 10)
 
     def message_function(self, x):
 
@@ -100,11 +104,11 @@ class RRN(torch.nn.Module):
     def forward(self, x):
 
         x = self.initial_state(x)
+
         r = self.rows(self.positions[:, :, 0])
         c = self.cols(self.positions[:, :, 1])
 
         x = torch.cat([x, r, c], dim = -1)
-
         x = x.reshape((-1, 3 * self.embed_size))
 
         for i in range(3):
@@ -112,7 +116,8 @@ class RRN(torch.nn.Module):
         x = self.pre_layers[3](x)
 
         x0 = x.clone()
-        n_nodes = x.shape[0] # batch dim?
+
+        n_nodes = x.shape[0]
 
         # Zeros of shape (batch_size, hidden_size)
         h_state = torch.zeros((x.shape[0], self.lstm_size))
@@ -120,9 +125,10 @@ class RRN(torch.nn.Module):
 
         for step in range(self.n_steps):
 
-            # Pass member function (okay?)
+            # (n_nodes, n_features), (n_edges, )
             x = message_passing(x, self.edge_indices, self.message_function, self.edge_features)
 
+            # Pass through
             x = torch.cat([x, x0], dim = -1)
 
             for i in range(3):
@@ -140,14 +146,16 @@ class RRN(torch.nn.Module):
             # The paper says this should be MINIMISED at every step, though.
 
         # Input to torch.nn.CrossEntropyLoss, roughly equivalent to TF softmax_cross_entropy_with_logits
-        x = self.output_layer(x).reshape((-1, 81, 9))
+        # Needs to be shape (N, 9, 81)??
+        x = self.output_layer(x).reshape((-1, 81, 10))
 
-        print(x.shape)
+        # Weird output shape for CrossEntropyLoss
+        x = x.permute(0, 2, 1)
 
         return x
 
     def eval(self, x):
-        return torch.nn.functional.softmax(forward(x), dim = -1)
+        return torch.nn.functional.softmax(self.forward(x), dim = -1)
 
 def train(net, x, y, learning_rate = 0.01, epochs = 100):
 
@@ -156,7 +164,7 @@ def train(net, x, y, learning_rate = 0.01, epochs = 100):
 
     losses = []
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
 
         for batch in range(x.shape[0]):
 
@@ -191,10 +199,18 @@ if __name__ == '__main__':
 
     from trainRRN import preprocessData
 
-    batch_size = 128
+    batch_size = 1024
 
-    net = RRN(batch_size = batch_size)
+    net = RRN(linear_size = 8, lstm_size = 8, embed_size = 8, message_size = 8, batch_size = batch_size, n_steps = 1)
+    net = net.to(device)
 
     qTrain, qTest, rTrain, rTest = preprocessData(batch_size = batch_size)
-    print(rTrain.shape)
-    train(net, qTrain, rTrain)
+
+    qTrain = qTrain.to(device)
+    qTest = qTrain.to(device)
+    rTrain = qTrain.to(device)
+    rTest = qTrain.to(device)
+
+    train(net, qTrain, rTrain, epochs = 1)
+
+    print('DONE')
