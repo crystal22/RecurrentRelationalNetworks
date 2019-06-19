@@ -15,7 +15,7 @@ def getData(fileLocation = '~/Downloads/sudoku.csv'):
 
     # Format: flat starting grid (0 padded), flat end grid
 
-    for d in tqdm(data.values[:1025]):
+    for d in tqdm(data.values[:2 ** 11]):
         dataSplit.append(list(map(int, list(d[0]))))
         trueSplit.append(list(map(int, list(d[1]))))
 
@@ -32,12 +32,15 @@ def preprocessData(batch_size = 1024, test_split = 0.1):
     n_batches = question.shape[0] // batch_size
 
     # Throw away the excess for the moment
-    questionBatched = question[:n_batches * batch_size].reshape((n_batches, batch_size, -1))
-    responseBatched = response[:n_batches * batch_size].reshape((n_batches, batch_size, -1))
+    questionBatched = question[:n_batches * batch_size].reshape((n_batches, batch_size, 81))
+    responseBatched = response[:n_batches * batch_size].reshape((n_batches, batch_size, 81))
 
     qTrain, qTest, rTrain, rTest = train_test_split(questionBatched, responseBatched, test_size = test_split)
 
-    return torch.tensor(qTrain, dtype = torch.long), torch.tensor(qTest, dtype = torch.long), torch.tensor(rTrain, dtype = torch.long), torch.tensor(rTest, dtype = torch.long)
+    return torch.tensor(qTrain, dtype = torch.long), \
+           torch.tensor(qTest, dtype = torch.long), \
+           torch.tensor(rTrain, dtype = torch.long), \
+           torch.tensor(rTest, dtype = torch.long)
 
 if __name__ == '__main__':
     preprocessData()
