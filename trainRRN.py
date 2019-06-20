@@ -15,7 +15,7 @@ def getData(fileLocation = '~/Downloads/sudoku.csv'):
 
     # Format: flat starting grid (0 padded), flat end grid
 
-    for d in tqdm(data.values[:2 ** 11]):
+    for d in tqdm(data.values):
         dataSplit.append(list(map(int, list(d[0]))))
         trueSplit.append(list(map(int, list(d[1]))))
 

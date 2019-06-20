@@ -91,7 +91,7 @@ class RRN(torch.nn.Module):
         # 9 outputs in paper, 10 in reference implementation?
         # 10 outputs for range [0, 9], but 0 is never used
         # However this needs to be in this range for PyTorch to determine the number of categories
-        self.output_layer = torch.nn.Linear(self.lstm_size, 10)
+        self.output_layer = torch.nn.Linear(self.lstm_size, 10) # add one?
 
     def message_function(self, x):
 
@@ -193,15 +193,24 @@ def train(net, x, y, learning_rate = 0.01, epochs = 100):
 
             losses.append(loss)
 
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': net.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': losses[-1],
+            }, 'sd' + str(epoch))
+
     return losses
 
 if __name__ == '__main__':
 
     from trainRRN import preprocessData
 
-    batch_size = 1024
+    torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
-    net = RRN(linear_size = 8, lstm_size = 8, embed_size = 8, message_size = 8, batch_size = batch_size, n_steps = 1)
+    batch_size = 2 ** 12
+
+    net = RRN(linear_size = 8, lstm_size = 8, embed_size = 8, message_size = 8, batch_size = batch_size, n_steps = 2)
     net = net.to(device)
 
     qTrain, qTest, rTrain, rTest = preprocessData(batch_size = batch_size)
@@ -211,6 +220,9 @@ if __name__ == '__main__':
     rTrain = qTrain.to(device)
     rTest = qTrain.to(device)
 
-    train(net, qTrain, rTrain, epochs = 1)
+    losses = train(net, qTrain, rTrain, epochs = 100) # 7m epoch
 
-    print('DONE')
+    import matplotlib.pyplot as plt
+
+    plt.plot(losses)
+    plt.savefig('losses.pdf')
