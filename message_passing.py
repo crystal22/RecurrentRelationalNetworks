@@ -1,6 +1,8 @@
 import torch
 
-from torch_scatter import scatter_add
+from itertools import repeat
+
+# from torch_scatter import scatter_add
 
 def message_passing(nodes, edges, message_fn, edge_features = None):
 
@@ -50,14 +52,19 @@ def message_passing(nodes, edges, message_fn, edge_features = None):
     # Sum over input edges -> sum those with repeated destination_idxs
     # PyTorch's scatter_add does NOT have the same behaviour as TensorFlow: In PyTorch ALL elements
     # of the source tensor are summed, rather than just those with repeated indices.
-    
+
     # The loop is exceptionally slow....
 
     # for source_idx in source_idxs:
         # updates[destination_idxs[source_idx]] += messages[source_idx]
 
     # Using torch_scatter.scatter_add
-    updates = scatter_add(messages, destination_idxs, out = updates, dim = 0)
+    # updates = scatter_add(messages, destination_idxs, out = updates, dim = 0)
+
+    index_size = list(repeat(1, messages.dim()))
+    index_size[0] = messages.size(0)
+    index = destination_idxs.view(index_size).expand_as(messages)
+    updates.scatter_add_(0, index, messages)
 
     return updates
 
